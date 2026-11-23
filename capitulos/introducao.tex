@@ -1,0 +1,34 @@
+\chapter{INTRODUÇÃO}
+O crescimento contínuo do tráfego de dados e a diversificação das aplicações em tempo real colocam exigências cada vez maiores sobre a infraestrutura das redes de computadores. Nesse cenário, o protocolo de controle de transmissão (\textbf{TCP} --- \textit{Transmission Control Protocol})~\cite{rfc9293} assegura a entrega confiável e ordenada dos dados, mas seu desempenho em enlaces de alta capacidade e com vários fluxos concorrentes depende do \textbf{controle de congestionamento}~\cite{rfc5681}.
+
+Ao longo das décadas, vários algoritmos foram propostos para repartir a largura de banda disponível sem saturar as filas dos roteadores. O \textbf{TCP CUBIC}~\cite{ha2008,rfc9438} tornou-se o algoritmo padrão em sistemas Linux. Em vez de crescer a janela de congestionamento de forma linear, como fazem os algoritmos clássicos da família Reno, o CUBIC usa uma função cúbica do tempo, o que o torna mais escalável em redes de alta velocidade (\textit{high-speed networks}).
+
+O CUBIC, porém, é essencialmente orientado a perdas (\textit{loss-based}): ele só reduz a janela depois que uma perda acontece e, até lá, tende a manter a fila do gargalo cada vez mais cheia. O resultado é o aumento do atraso (\textit{bufferbloat}) e, em alguns casos, prejuízo à justiça (\textit{fairness}) entre fluxos concorrentes. A intensidade desse efeito varia com a topologia, o tamanho dos buffers e o tráfego concorrente, como mostram as comparações experimentais entre CUBIC e BBR~\cite{casas2022,ware2019}.
+
+O \textbf{TCP BBR} (\textit{Bottleneck Bandwidth and Round-trip propagation time}), desenvolvido pelo Google, parte de outra ideia. Em vez de tratar a perda como o principal sinal de congestionamento, ele estima a largura de banda do gargalo e o menor tempo de ida e volta do caminho, e ajusta o envio a partir desse modelo~\cite{cardwell2017}.
+
+Foi dessa diferença de abordagem que nasceu este trabalho, que desenvolve e avalia, no simulador \textbf{ns-3}, uma variante do CUBIC chamada \textbf{TCP CUBIC-RTT}. A proposta usa informações de RTT para ajustar dois parâmetros do algoritmo: o coeficiente $\alpha$, que regula o quanto o crescimento da janela se adapta, e o coeficiente $\gamma$, que regula a redução da janela depois de um congestionamento.
+
+\section{JUSTIFICATIVA}
+A proposta surgiu da comparação entre a forma como CUBIC e BBR controlam o envio de dados. O CUBIC guia o crescimento da janela por uma função cúbica e reage ao congestionamento principalmente por meio de perdas; o BBR, por sua vez, trabalha com estimativas da largura de banda do gargalo e do RTT de propagação. Dessa diferença veio a pergunta que orienta todo o trabalho: acrescentar uma informação de RTT à lógica do CUBIC muda seu comportamento de forma relevante?
+
+Vale deixar claro que não se parte da premissa de que a adaptação seja melhor do que os algoritmos existentes. Trata-se de uma hipótese a ser testada. Por isso, a proposta mantém a estrutura geral do CUBIC e altera apenas o cálculo de dois fatores, um ligado ao crescimento e outro à redução da janela, usando uma medida de RTT como referência.
+
+A investigação começa com a comparação entre CUBIC, BBR e CUBIC-RTT sob diferentes atrasos no enlace de gargalo. Em seguida, os experimentos são ampliados para variar a largura de banda, a quantidade de fluxos, o atraso dos enlaces de acesso e os coeficientes de adaptação. Avaliar a proposta em condições variadas, e não em um único cenário, acompanha a orientação do RFC 9743~\cite{rfc9743} para a análise de novos algoritmos de controle de congestionamento. São analisadas vazão, perda de pacotes, atraso médio, jitter e justiça entre fluxos.
+
+\section{OBJETIVOS}
+O objetivo geral é comparar os algoritmos TCP CUBIC e TCP BBR e desenvolver e avaliar uma variante do CUBIC, o TCP CUBIC-RTT, que incorpora uma medida de RTT à adaptação de fatores do controle de congestionamento.
+
+Os objetivos específicos são:
+\begin{itemize}
+    \item \textbf{Fundamentar} os conceitos de controle de congestionamento em redes TCP, com ênfase no CUBIC, no BBR e nas métricas de avaliação;
+    \item \textbf{Comparar inicialmente} CUBIC e BBR em cenários controlados, identificando diferenças de comportamento que motivem a proposta;
+    \item \textbf{Implementar} a variante TCP CUBIC-RTT no código-fonte do \texttt{ns-3}, preservando a estrutura geral do CUBIC e introduzindo adaptação baseada em RTT;
+    \item \textbf{Executar campanhas experimentais} com diferentes atrasos de gargalo, larguras de banda, quantidades de fluxos, atrasos de acesso e combinações dos coeficientes de adaptação;
+    \item \textbf{Coletar e analisar} vazão, perda de pacotes, atraso médio, jitter e justiça entre fluxos, além dos rastros das variáveis internas do TCP;
+    \item \textbf{Avaliar criticamente} em quais condições a proposta altera o comportamento do CUBIC e quais compromissos aparecem em relação ao algoritmo original e ao BBR;
+    \item \textbf{Investigar a coexistência} entre fluxos CUBIC e CUBIC-RTT que compartilham o mesmo gargalo, verificando se a adaptação favorece ou prejudica uma das variantes.
+\end{itemize}
+
+\section{ORGANIZAÇÃO DO TRABALHO}
+O Capítulo 2 apresenta a fundamentação teórica: o controle de congestionamento no TCP, o CUBIC, o BBR, a simulação por eventos discretos e as métricas de avaliação. O Capítulo 3 descreve a metodologia, com a topologia, as três campanhas experimentais, a matriz de parâmetros e os cuidados estatísticos. O Capítulo 4 detalha a implementação do TCP CUBIC-RTT e as decisões de instrumentação. O Capítulo 5 apresenta e discute os resultados da comparação inicial, da campanha de robustez e do experimento de coexistência. O Capítulo 6 reúne as considerações finais, as contribuições e os trabalhos futuros.

@@ -1,0 +1,100 @@
+\chapter{IMPLEMENTAÇÃO DO TCP CUBIC-RTT}
+
+O TCP CUBIC-RTT foi implementado diretamente no código-fonte do ns-3, a partir do TCP CUBIC que o simulador já oferece. A implementação está nos arquivos \texttt{tcp-cubic-rtt.cc} e \texttt{tcp-cubic-rtt.h}.
+
+A ideia central é incorporar informações de RTT ao crescimento e à redução da janela do CUBIC. Para isso, foram introduzidos dois coeficientes de sensibilidade, $\alpha$ e $\gamma$, que controlam a intensidade da adaptação do fator de crescimento cúbico $C$ e do fator de redução multiplicativa $\beta$ após o congestionamento.
+
+\section{Estrutura Geral da Modificação}
+
+O CUBIC original usa uma função cúbica para determinar o crescimento da janela, com parâmetros que definem a velocidade e a forma desse crescimento. No CUBIC-RTT, o fator de escala cúbico deixa de ser fixo e passa a ser ajustado conforme o RTT observado pela conexão. De forma análoga, o fator de redução multiplicativa usado após a detecção de perdas também passa a considerar a condição de atraso. A estrutura geral do CUBIC é mantida: a adaptação entra apenas nos pontos que calculam o crescimento e o limiar de congestionamento.
+
+\section{Adaptação Baseada no RTT}
+
+O mecanismo se apoia em duas grandezas: o menor RTT observado pela conexão, \texttt{m\_delayMin}, e um RTT de referência, \texttt{m\_rttReference}, fixado em 200 ms na configuração de referência dos experimentos. Note que a variável usada é o mínimo observado, e não a amostra instantânea de RTT. A referência serve de ponto de comparação: ela indica se o atraso mínimo da conexão está acima ou abaixo do nível considerado adequado.
+
+A razão entre os dois valores é
+\begin{equation}
+rttRatio = \frac{m\_delayMin}{m\_rttReference}
+\end{equation}
+e sua diferença em relação à referência é normalizada e limitada ao intervalo $[-1, 1]$:
+\begin{equation}
+x = clamp(rttRatio - 1.0, -1.0, 1.0)
+\end{equation}
+
+Esse limite evita que RTTs extremos provoquem alterações desproporcionais nos parâmetros adaptativos. Se o menor RTT observado fica abaixo da referência, $x$ é negativo; se a ultrapassa, $x$ é positivo. Como a formulação parte do valor mínimo, ela mede a relação entre o atraso mínimo da conexão e a referência configurada e, por isso, não detecta aumentos transitórios de RTT causados pelo enfileiramento.
+
+\section{Adaptação do Fator de Crescimento Cúbico}
+
+O primeiro mecanismo atua sobre o fator $C$, que controla a agressividade do crescimento da janela. O fator adaptativo é
+\begin{equation}
+C_{adaptive} =
+m\_c \times (1.0 + m\_alpha \times x)
+\end{equation}
+onde $m\_c$ é o fator cúbico original, $m\_alpha$ é o coeficiente $\alpha$ de sensibilidade ao RTT e $x$ é a variação normalizada do RTT em relação à referência. Quanto maior o valor de $\alpha$, maior a influência de $x$ sobre $C$; valores menores produzem uma adaptação mais moderada. Variar $\alpha$ permite, desse modo, investigar diferentes níveis de sensibilidade do crescimento da janela ao atraso da rede.
+
+\section{Adaptação do Fator de Redução Multiplicativa}
+
+O segundo mecanismo atua sobre o fator $\beta$, que define a proporção da janela mantida após um evento de perda:
+\begin{equation}
+\beta_{calc} =
+m\_beta + m\_gamma \times x
+\end{equation}
+Para que o resultado respeite os limites da implementação, aplica-se uma função de limitação:
+\begin{equation}
+\beta_{adaptive} =
+clamp(\beta_{calc}, m\_betaMin, m\_betaMax)
+\end{equation}
+
+O coeficiente $\gamma$ determina, assim, a influência de $x$ sobre o fator multiplicativo. Como $\beta$ é a fração da janela preservada, valores maiores correspondem a uma redução menos acentuada e valores menores, a uma redução mais forte.
+
+As duas equações devem ser lidas em conjunto. Quando $x$ é positivo, tanto $C_{adaptive}$ quanto $\beta_{adaptive}$ tendem a aumentar: o crescimento cúbico fica mais intenso e uma fração maior da janela é preservada após a perda. Quando $x$ é negativo, ocorre o contrário. Não se pode afirmar, portanto, que todo aumento de RTT leva a uma redução mais conservadora da janela: o efeito depende do sinal de $x$ e do RTT de referência escolhido.
+
+\section{Parâmetros Utilizados na Implementação}
+
+Os parâmetros $\alpha$ e $\gamma$ são configuráveis a cada simulação. A configuração de referência da comparação experimental é:
+
+\begin{itemize}
+    \item Fator cúbico original: $C=0{,}4$~\cite{rfc9438};
+    \item Fator de redução original: $\beta=0{,}7$~\cite{rfc9438};
+    \item RTT de referência: 200 ms;
+    \item $\alpha=0{,}25$;
+    \item $\gamma=0{,}05$;
+    \item Limite mínimo de $\beta$: 0,65;
+    \item Limite máximo de $\beta$: 0,85.
+\end{itemize}
+
+Na campanha de robustez, $\alpha$ e $\gamma$ são variados para avaliar a influência de diferentes níveis de sensibilidade ao RTT.
+
+\section{Organização do Código e Fluxo de Execução}
+
+A implementação foi distribuída entre o modelo do protocolo e o programa responsável por montar e executar os cenários. Os arquivos da variante ficam no diretório \texttt{src/internet/model}. O arquivo \url{tcp-cubic-rtt.cc} contém a lógica executável do algoritmo, enquanto \url{tcp-cubic-rtt.h} declara a classe, seus atributos e as interfaces utilizadas pelo ns-3.
+
+A adaptação do fator cúbico é concentrada no cálculo de $C$ adaptativo, implementado pela rotina \texttt{CalculateAdaptiveC()}. Esse valor é utilizado pelo mecanismo de crescimento da janela, integrado às rotinas \texttt{IncreaseWindow()} e \texttt{Update()}, que preservam a lógica temporal do CUBIC: início de uma época, cálculo do ponto de origem da curva, determinação de $K$ e atualização da janela em direção ao alvo cúbico. A adaptação não substitui a função cúbica por um modelo de taxa de envio diferente; ela altera o fator que controla sua escala.
+
+A redução após congestionamento é tratada em \texttt{GetSsThresh()}. Nesse ponto, a implementação calcula o valor adaptativo de $\beta$, aplica os limites mínimo e máximo configurados e utiliza o resultado para determinar o novo limiar de congestionamento. A rotina \texttt{HystartUpdate()} permanece relacionada ao mecanismo de partida lenta, enquanto as informações de RTT são mantidas para alimentar o cálculo adaptativo. Com isso, as mudanças ficam concentradas nos pontos de crescimento e de reação à perda, sem eliminar os demais mecanismos do CUBIC.
+
+Os principais atributos expostos pela implementação são o fator cúbico base, o RTT de referência, os coeficientes $\alpha$ e $\gamma$ e os limites de $\beta$. Na configuração de referência, foram utilizados $C=0{,}4$, $\beta=0{,}7$, RTT de referência de 200 ms, $\alpha=0{,}25$, $\gamma=0{,}05$, $\beta_{\min}=0{,}65$ e $\beta_{\max}=0{,}85$. Os coeficientes são configuráveis na execução, o que permite automatizar a matriz experimental sem editar o código entre combinações.
+
+O programa de experimentos está em \texttt{examples/tcp/cubic-experiment.cc} e gera o executável \texttt{cubic-experiment}. Ele configura os nós, os enlaces de acesso e o gargalo, instala a pilha TCP, cria os emissores e receptores, define o algoritmo de transporte e os parâmetros da simulação e, ao final, executa o monitoramento e grava os resultados. Entre os parâmetros de execução estão o protocolo, o número de fluxos, a largura de banda e o atraso dos enlaces, a duração, a ativação do rastreamento e do FlowMonitor e o diretório de saída. Um exemplo de execução da campanha inicial é:
+
+\begin{verbatim}
+./ns3 run "cubic-experiment --transport_prot=TcpCubic \
+  --num_flows=4 --bandwidth=2Mbps --delay=10ms \
+  --access_bandwidth=10Mbps --access_delay=45ms \
+  --duration=100 --tracing=true --flow_monitor=true \
+  --results_dir=../../results/cubic/cenario01"
+\end{verbatim}
+
+\section{Instrumentação e Rastreamento das Variáveis}
+
+O programa experimental conecta callbacks aos rastros disponibilizados pela pilha TCP do ns-3. Foram utilizados registros de \texttt{CongestionWindow}, \texttt{SlowStartThreshold}, RTT, RTO, \texttt{BytesInFlight} e variáveis de sequência utilizadas para diagnóstico, como \texttt{NextTx} e \texttt{RxBuffer/NextRxSequence}. Os dados são gravados em arquivos temporais por fluxo, permitindo relacionar o instante de cada alteração com o comportamento observado no FlowMonitor.
+
+Os rastros de CWND e SSThresh foram produzidos para as 3.780 conexões de dados das duas primeiras campanhas. Também foram gerados rastros de RTT e de quantidade de dados em trânsito para examinar a evolução temporal das conexões. A instrumentação complementa as métricas agregadas: a vazão, a perda, o atraso e o jitter mostram o resultado de cada execução, enquanto os rastros permitem observar como a janela de congestionamento e o estado da conexão evoluem ao longo do tempo.
+
+\section{Dificuldades de Implementação e Decisões Técnicas}
+
+A primeira dificuldade foi a própria topologia. A configuração inicial tinha enlaces independentes entre os gateways e os destinos, o que não representava a disputa de vários emissores por um único recurso compartilhado. A solução foi reorganizar a arquitetura com dois roteadores intermediários, Gateway A e Gateway B, ligados por um enlace comum configurado como gargalo, de modo que a competição entre os fluxos passasse a ocorrer de fato no enlace de interesse.
+
+Outro obstáculo surgiu na conexão dos \textit{callbacks} de rastreamento. O caminho \texttt{RxBuffer/NextRxSequence}, acessado por \texttt{SocketList/1}, não correspondia ao \textit{socket} usado pelo fluxo; a troca para \texttt{SocketList/0} resolveu a associação. O episódio serviu de lembrete de que é preciso validar o caminho de rastreamento de cada \textit{socket}, em vez de presumir que todos os nós e conexões usam o mesmo índice.
+
+O processamento dos resultados trouxe mais dois cuidados. O primeiro foi separar os fluxos de dados dos fluxos reversos de ACK criados pelo FlowMonitor; sem isso, o tráfego de reconhecimento seria contado como uma segunda transmissão de dados e distorceria a vazão e as demais métricas. O segundo veio da observação de execuções idênticas em CUBIC e CUBIC-RTT: variar o \texttt{RngRun} não gera, necessariamente, variação em todos os algoritmos. Esse ponto foi tratado de forma explícita na análise estatística, para não considerar repetições determinísticas como amostras independentes.

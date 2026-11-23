@@ -1,0 +1,40 @@
+\chapter{FUNDAMENTAÇÃO TEÓRICA}
+O controle de congestionamento é um dos mecanismos mais importantes para a estabilidade da Internet, pois evita o colapso por saturação de roteadores e enlaces. Este capítulo reúne os conceitos necessários para acompanhar o restante do trabalho.
+
+\section{Controle de Congestionamento no TCP}
+O TCP opera na camada de transporte e oferece um canal confiável e orientado a conexões sobre redes IP que, em geral, só fazem entrega pelo melhor esforço (\textit{best-effort})~\cite{rfc9293,kurose2017}. Para que os emissores não sobrecarreguem roteadores cujos buffers são finitos, o TCP mantém uma janela de congestionamento (\textit{congestion window}, $cwnd$) que limita a quantidade de dados em trânsito (\textit{bytes in flight}) antes da chegada das confirmações (\textit{ACKs}). O limiar de partida lenta (\textit{slow start threshold}, $ssthresh$) define quando a janela deixa de crescer de forma exponencial e passa a crescer de forma mais cautelosa~\cite{rfc5681}.
+
+Algoritmos clássicos como o TCP Reno seguem o esquema AIMD (\textit{Additive Increase, Multiplicative Decrease}): a janela cresce linearmente a cada RTT e é reduzida pela metade diante de uma perda~\cite{rfc5681,kurose2017}. Esse esquema é robusto, mas se mostra ineficiente em redes de alta velocidade e alto produto largura de banda-atraso (\textit{Bandwidth-Delay Product}, BDP), porque a janela leva muito tempo para se recuperar depois de uma perda.
+
+\section{O Algoritmo TCP CUBIC}
+O TCP CUBIC foi proposto para corrigir essa limitação em redes de alta velocidade~\cite{ha2008}. Em vez de crescer linearmente, a janela é função cúbica do tempo $t$ decorrido desde a última redução~\cite{rfc9438}:
+\begin{equation}
+    W_{cubic}(t) = C\,(t-K)^3 + W_{max}, \qquad K = \sqrt[3]{\frac{W_{max}\,(1-\beta)}{C}}
+\end{equation}
+onde $W_{max}$ é a janela registrada imediatamente antes da última redução, $C$ é o fator de escala do crescimento cúbico, $\beta$ é a fração da janela preservada após uma perda e $K$ é o tempo que a função leva para voltar a $W_{max}$. A especificação atual adota $C=0{,}4$ e $\beta=0{,}7$~\cite{rfc9438}.
+
+O formato da curva explica o comportamento do algoritmo. Logo após uma redução, a janela cresce depressa; ao se aproximar de $W_{max}$, o crescimento desacelera, o que dá estabilidade a esse ponto; ultrapassado $W_{max}$, a curva volta a acelerar para sondar se há capacidade adicional. Como o crescimento depende do tempo e não do RTT, o CUBIC é adequado a caminhos de longa distância.
+
+Por reagir sobretudo a perdas, o CUBIC pode deixar a fila do gargalo crescer antes de perceber o congestionamento, o que eleva a latência e favorece o \textit{bufferbloat}. O tamanho desse efeito depende da topologia, dos buffers, da capacidade dos enlaces e da concorrência entre fluxos.
+
+\section{O Algoritmo TCP BBR}
+O TCP BBR~\cite{cardwell2017} segue uma abordagem baseada em modelo. Ele estima continuamente a largura de banda máxima do gargalo ($BtlBw$, \textit{bottleneck bandwidth}) e o tempo mínimo de propagação do RTT ($RTprop$). Com essas estimativas, calcula o BDP e regula a taxa de envio e a quantidade de dados em trânsito para usar a capacidade do gargalo sem manter filas longas.
+
+Esse mecanismo não garante ausência de filas ou perdas. O desempenho e a justiça do BBR variam com a versão do algoritmo, o tamanho dos buffers, a topologia e a presença de outros fluxos, inclusive fluxos CUBIC~\cite{ware2019,casas2022}.
+
+\section{Simulação de Redes por Eventos Discretos no ns-3}
+Experimentos em redes físicas costumam ser difíceis de reproduzir e de isolar variável por variável. Por isso, recorre-se a simuladores de eventos discretos, entre os quais o \textbf{ns-3}~\cite{ns3}. O \texttt{ns-3} é um simulador de código aberto escrito em C++ (com \textit{bindings} para Python) que modela a pilha de protocolos IP, canais, enlaces e algoritmos de controle de tráfego. Sua arquitetura modular permite implementar novas variantes de transporte e executar cenários controlados e repetíveis, requisito importante para a pesquisa acadêmica.
+
+\section{Métricas de Avaliação de Desempenho}
+O comportamento dos protocolos de transporte é analisado com um conjunto de métricas de qualidade de serviço:
+\begin{itemize}
+    \item \textbf{Vazão (\textit{throughput}):} taxa de dados úteis entregues ao destino por unidade de tempo, em Mbps.
+    \item \textbf{Atraso médio unidirecional:} intervalo entre o envio de um pacote e sua recepção no destino, conforme o FlowMonitor. Não deve ser confundido com o RTT, que é o tempo de ida e volta observado pela conexão.
+    \item \textbf{Taxa de perda de pacotes:} percentual de pacotes descartados no caminho por congestionamento e estouro de filas.
+    \item \textbf{Jitter:} média das variações absolutas entre os atrasos de pacotes consecutivos, conforme os registros do FlowMonitor. A noção de variação de atraso de pacotes é a mesma formalizada na métrica IPDV do IETF~\cite{rfc3393}; aqui, porém, vale a definição operacional do FlowMonitor.
+    \item \textbf{Índice de Justiça de Jain:} medida adimensional da equidade na divisão de recursos entre $n$ fluxos~\cite{jain1984}, dada por
+    \begin{equation}
+        J = \frac{\left( \sum_{i=1}^{n} x_i \right)^2}{n \sum_{i=1}^{n} x_i^2}
+    \end{equation}
+    em que $x_i$ é a vazão média do $i$-ésimo fluxo. O índice varia em $[1/n, 1]$, e valores próximos de $1$ indicam distribuição mais equilibrada.
+\end{itemize}

@@ -1,0 +1,129 @@
+\chapter{METODOLOGIA}
+
+A metodologia combina o desenvolvimento da variante TCP CUBIC-RTT com sua avaliação experimental. A abordagem é empírico-quantitativa: simulações no ns-3 comparam o comportamento da proposta com o do CUBIC e do BBR. O processo teve as seguintes etapas: implementação da proposta, definição das topologias e dos parâmetros, execução das campanhas, coleta das métricas e processamento dos dados.
+
+\section{Ambiente de Simulação}
+
+Os experimentos foram realizados no simulador ns-3~\cite{ns3}, que permite controlar as características dos enlaces, os atrasos de propagação, a largura de banda e a quantidade de fluxos concorrentes. Com isso, os algoritmos são comparados em condições experimentais equivalentes.
+
+Os cenários foram implementados em C++ sobre os módulos de rede e transporte do ns-3. Para registrar o comportamento dos fluxos, usaram-se mecanismos de rastreamento de eventos e o módulo FlowMonitor.
+
+\section{Arquitetura da Topologia Experimental}
+
+A topologia tem dois roteadores intermediários, Gateway A e Gateway B, ligados por um enlace compartilhado que é o gargalo da rede. Os nós de origem abrem fluxos TCP que atravessam o Gateway A, passam pelo gargalo e chegam aos nós de destino pelo Gateway B. Dessa forma, vários fluxos disputam a capacidade de um mesmo enlace, o que permite observar como cada algoritmo se comporta sob competição por recursos.
+
+A largura de banda e o atraso de propagação do gargalo são configuráveis. Os enlaces de acesso dos nós finais têm parâmetros próprios, mantidos fixos em cada cenário, de modo que a variação analisada venha principalmente do gargalo e da quantidade de fluxos.
+
+\section{Parâmetros e Variáveis Experimentais}
+
+Os experimentos foram organizados em três campanhas complementares. A primeira compara TCP CUBIC, TCP BBR e TCP CUBIC-RTT em uma topologia controlada. A segunda amplia a avaliação, variando os parâmetros da proposta e as condições de rede. A terceira investiga a coexistência entre fluxos CUBIC e CUBIC-RTT no mesmo gargalo. A ampliação dos cenários segue a orientação de avaliar novos algoritmos sob condições diversas de rede~\cite{rfc9743}.
+
+\subsection{Campanha Comparativa Inicial}
+
+Os parâmetros comuns da campanha inicial são:
+
+\begin{itemize}
+    \item Largura de banda do gargalo: 2 Mbps;
+    \item Largura de banda dos enlaces de acesso: 10 Mbps;
+    \item Atraso dos enlaces de acesso: 45 ms;
+    \item Número de fluxos concorrentes: 4;
+    \item Duração de cada simulação: 100 segundos;
+    \item Número de repetições: 5;
+    \item Atrasos do gargalo: 10 ms, 50 ms e 100 ms.
+\end{itemize}
+
+Com três algoritmos, três atrasos e cinco repetições, a campanha compreende 45 execuções.
+
+\subsection{Campanha de Robustez e Variação de Parâmetros}
+\label{sec:robustez}
+
+A segunda campanha investiga o comportamento dos algoritmos sob outras condições de rede e com diferentes configurações do CUBIC-RTT. Foram definidos três cenários:
+
+\begin{itemize}
+    \item \textbf{bw1\_f4:} gargalo de 1 Mbps, quatro fluxos e atraso de acesso de 45 ms;
+    \item \textbf{bw2\_f8:} gargalo de 2 Mbps, oito fluxos e atraso de acesso de 45 ms;
+    \item \textbf{access100:} gargalo de 2 Mbps, quatro fluxos e atraso de acesso de 100 ms.
+\end{itemize}
+
+Em todos os cenários, os enlaces de acesso têm 10 Mbps. Os atrasos do gargalo voltam a ser 10 ms, 50 ms e 100 ms, com cinco repetições por configuração.
+
+A campanha contempla quinze configurações de algoritmo e parâmetros: o CUBIC original, o BBR, o CUBIC-RTT na configuração de referência ($\alpha=0{,}25$ e $\gamma=0{,}05$) e doze configurações adicionais do CUBIC-RTT, obtidas pela variação de $\alpha$ e $\gamma$:
+
+\begin{itemize}
+    \item $\alpha=0{,}10$: $\gamma \in \{0{,}00; 0{,}025; 0{,}05; 0{,}10\}$;
+    \item $\alpha=0{,}25$: $\gamma \in \{0{,}00; 0{,}025\}$;
+    \item $\alpha=0{,}50$: $\gamma \in \{0{,}00; 0{,}025\}$;
+    \item $\alpha=0{,}75$: $\gamma \in \{0{,}00; 0{,}025; 0{,}05; 0{,}10\}$.
+\end{itemize}
+
+O total de execuções da campanha é
+
+\begin{equation}
+N = 3 \times 15 \times 3 \times 5 = 675.
+\end{equation}
+
+Separar as campanhas permite avaliar primeiro os algoritmos tradicionais e a proposta e, depois, a influência dos parâmetros internos do CUBIC-RTT em cenários mais diversos.
+
+\subsection{Campanha de Coexistência entre CUBIC e CUBIC-RTT}
+
+A terceira campanha foi concebida para observar diretamente a interação entre as duas variantes quando disputam a mesma capacidade de transmissão. Foram executados oito fluxos TCP simultâneos: os fluxos 0, 2, 4 e 6 utilizaram CUBIC, enquanto os fluxos 1, 3, 5 e 7 utilizaram CUBIC-RTT, com $\alpha=0{,}25$ e $\gamma=0{,}05$. A alternância foi mantida também na atribuição dos enlaces de acesso, de modo que cada algoritmo tivesse um fluxo em cada uma das quatro condições de atraso de acesso.
+
+O gargalo compartilhado foi configurado com largura de banda de 10 Mbps e atrasos de 10 ms, 50 ms e 100 ms. Os enlaces de acesso operaram a 1 Gbps e foram configurados com atrasos de 10 ms, 30 ms, 60 ms e 90 ms, cada condição atribuída a um par de fluxos, um de cada algoritmo. O experimento utilizou aquecimento de 20 segundos, seguido por 300 segundos de medição, cinco repetições por atraso e início dos fluxos com deslocamento aleatório de até dois segundos. A configuração de fila utilizou um tamanho equivalente a um BDP.
+
+Assim, a campanha compreendeu:
+\begin{equation}
+N_{\text{coexistência}} = 3 \times 5 = 15
+\end{equation}
+execuções, totalizando 120 registros de fluxos de dados no FlowMonitor. A vazão foi comparada pela média dos quatro fluxos de cada algoritmo em cada repetição. A perda foi consolidada a partir dos pacotes transmitidos e perdidos, enquanto atraso e jitter foram calculados a partir dos valores dos quatro fluxos de cada grupo.
+
+A atribuição dos algoritmos foi conferida pelos endereços de origem: os endereços \texttt{10.0.1.1}, \texttt{10.0.3.1}, \texttt{10.0.5.1} e \texttt{10.0.7.1} identificam os fluxos CUBIC; os endereços \texttt{10.0.2.1}, \texttt{10.0.4.1}, \texttt{10.0.6.1} e \texttt{10.0.8.1} identificam os fluxos CUBIC-RTT. Essa separação permite observar se a vantagem de uma variante ocorre sem confundir os resultados com a diferença de atraso dos enlaces de acesso.
+
+\subsection{Execução e consolidação das campanhas}
+
+As três campanhas totalizam 735 simulações: 45 na comparação inicial, 675 na campanha de robustez e 15 na campanha de coexistência. Nas duas primeiras campanhas, cada simulação contém quatro fluxos nos cenários \texttt{bw1\_f4} e \texttt{access100}, e oito fluxos no cenário \texttt{bw2\_f8}. A campanha de coexistência utiliza oito fluxos em todas as execuções.
+
+Como o FlowMonitor registra fluxos nos dois sentidos da comunicação, os registros foram processados para separar os fluxos de dados das conexões reversas utilizadas para os reconhecimentos (ACKs). Essa filtragem evita contabilizar o tráfego de retorno como se fosse tráfego útil independente. Nas duas primeiras campanhas, foram consolidados 3.780 registros de fluxos de dados. A campanha de coexistência acrescentou 120 registros, correspondentes a oito fluxos em cada uma das quinze execuções.
+
+Os rastros internos também foram auditados. Os 3.780 arquivos de CWND e os 3.780 de SSThresh (7.560 no total) estavam completos, sem pares ausentes, erros ou avisos. Nos dados do FlowMonitor, os totais de bytes e pacotes transmitidos e recebidos foram confirmados, e a taxa de perda e o atraso médio foram reproduzidos exatamente a partir dos valores brutos. O recálculo do jitter apresentou erro médio de cerca de $5{,}57\times10^{-6}$ ms (máximo de $2{,}03\times10^{-4}$ ms), e o índice de Jain, diferença média de aproximadamente 0,00028 (máxima de 0,00349), atribuídas à precisão numérica e à forma de agregação por fluxo. Por serem muito pequenas, essas diferenças não alteram a interpretação dos resultados.
+
+A aleatoriedade das simulações foi controlada pelas sementes do ns-3: todas as execuções usam $Seed = 1$, e o identificador de repetição \texttt{RngRun} assume valores de 1 a 5. Assim, as condições de cada repetição podem ser reproduzidas, desde que se mantenham as versões do código, os parâmetros e a configuração dos geradores.
+
+Há, porém, uma ressalva importante. Identificadores diferentes não garantem independência estatística, pois alguns algoritmos se comportam de forma determinística em condições idênticas. Foi o que se observou na campanha inicial: CUBIC e CUBIC-RTT produziram valores idênticos entre repetições em algumas métricas, enquanto o BBR variou. Por isso, médias e desvios são tratados como estatísticas descritivas das execuções, e não como base para afirmar significância estatística onde não há variabilidade efetiva.
+
+\section{Coleta das Métricas de Desempenho}
+
+Os dados foram coletados por dois mecanismos complementares: o FlowMonitor e o rastreamento de variáveis internas do TCP.
+
+\subsection{Métricas obtidas pelo FlowMonitor}
+
+O FlowMonitor forneceu, para cada fluxo:
+
+\begin{itemize}
+    \item \textbf{Vazão:} dados recebidos com sucesso por unidade de tempo, em Mbps;
+    \item \textbf{Perda de pacotes:} relação entre os pacotes transmitidos e os que não chegaram ao destino;
+    \item \textbf{Atraso médio:} média dos atrasos dos pacotes recebidos;
+    \item \textbf{Jitter:} variação dos atrasos entre pacotes consecutivos.
+\end{itemize}
+
+As métricas foram analisadas por fluxo e de forma agregada por simulação, considerando os totais e os intervalos de tempo do conjunto de fluxos. O RTT, por sua vez, é analisado à parte, a partir do rastreamento da variável interna do TCP.
+
+\subsection{Métricas internas do TCP}
+
+Foram rastreadas quatro variáveis internas, o que permite observar a evolução do controle de congestionamento ao longo do tempo:
+
+\begin{itemize}
+    \item \textbf{CWND:} janela de congestionamento do emissor, em bytes;
+    \item \textbf{SSThresh:} limiar de transição entre as fases de crescimento da janela;
+    \item \textbf{RTT:} tempo de ida e volta observado pela conexão;
+    \item \textbf{InFlight:} quantidade de dados enviados e ainda não reconhecidos.
+\end{itemize}
+
+\section{Processamento e Consolidação dos Dados}
+
+Os arquivos gerados são organizados por algoritmo, cenário, atraso e repetição. Scripts em Python leem os arquivos, identificam os fluxos relevantes, calculam estatísticas e consolidam os resultados em arquivos CSV. O processamento associa as métricas de cada fluxo ao respectivo cenário e verifica a consistência dos dados: registros ausentes, duplicações e divergências entre totais agregados e valores individuais.
+
+A justiça na distribuição da banda foi avaliada com o Índice de Jain~\cite{jain1984}, calculado a partir da vazão ou da quantidade de dados recebida pelos fluxos, conforme a análise.
+
+\section{Tratamento Estatístico e Limitações das Repetições}
+
+Os resultados são organizados por configuração e repetição. Quando há variabilidade entre as execuções, usam-se medidas descritivas (média, mínimo e máximo). Algumas configurações, no entanto, podem produzir execuções idênticas, sobretudo quando algoritmo e cenário não introduzem variação aleatória efetiva entre as repetições, e a interpretação dos resultados considera essa possibilidade.
